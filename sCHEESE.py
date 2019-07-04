@@ -1,11 +1,9 @@
-# TODO:
-# work on PWM implementation
-# preventative measures for single mapping per pin
-# work on motor control
-# figure out how the MOSI & MISO work ...
+# Python Library for the SwissCHEESE Hat made by CARobotics
+# Developed by Andrew Hua
+# Credits go to the respective owners of the imported libraries
 
 #########
-# TIME
+# TIME FUNCTIONS
 #########
 import time
 
@@ -14,7 +12,14 @@ import time
 
 def delay(milliseconds):
     time.sleep(milliseconds / 1000)
-    print('time delay of  {0} seconds'.format(milliseconds/1000))
+    print('time delay of  {0} millisecond(s)'.format(milliseconds/1000))
+
+# The delayMicro function will mimic the same function in Arduino, with the purpose of being even shorter
+# amount of time, intended for unique circumstances and hardware
+
+def delayMicro(microseconds):
+    time.sleep(microseconds/1000000)
+    print('time delay of {0} microsecond(s)'.format(microseconds/1000000))
 
 #######
 # INPUT (MCP3008)
@@ -28,14 +33,15 @@ def delay(milliseconds):
 import Adafruit_GPIO.SPI as SPI
 import Adafruit_MCP3008 as MCP
 
+# Hardware SPI configuration
+SPI_PORT = 0
+SPI_DEVICE = 0
+mcp = MCP.MCP3008(spi=SPI.SpiDev(SPI_PORT, SPI_DEVICE))
+
 class inputPort:
 
-    # Hardware SPI configuration
-    SPI_PORT = 0
-    SPI_DEVICE = 0
-    mcp = MCP.MCP3008(spi=SPI.SpiDev(SPI_PORT, SPI_DEVICE))
-
     # Validity flag to ensure that correct port is used
+    # Considering instantly destructing this object is valid flag is not passed
     valid = True
 
     # Initialization of the port number being used
@@ -43,28 +49,34 @@ class inputPort:
 
     # Constructor for the inputPort
     def __init__(self, portNum):
-
+            # The only valid ports accepted will be from 0 to 7 (referred to as J1 to J8)
             if (portNum > -1 and portNum < 8) :
                 self.portNum = portNum
                 self.valid = True
             else:
                 self.valid = False
 
-
     # Function to print the active value that is being read by the output IN ANALOG terms
     def printValue(self):
-        print('Currently reading in a value of: ', self.mcp.read_adc(self.portNum))
+        if valid:
+            print('Currently reading in a value of: ', mcp.read_adc(self.portNum))
 
     # Function responsible for detecting whether a button input has been received
     # Can be used as a conditional statement to gate whether a button input has been received in the code
     def buttonPress(self):
-        # Unsure about the correct analog value threshold to use as typically input goes above 1000
-        if (self.mcp.read_adc(self.portNum) > 800):
-            print('Button has been pressed')
-            return True
-        else:
-            print('Button has not been pressed')
-            return False
+        if valid:
+            # Unsure about the correct analog value threshold to use as typically input goes above 1000
+            if (mcp.read_adc(self.portNum) > 800):
+                print('Button has been pressed')
+                return True
+            else:
+                print('Button has not been pressed')
+                return False
+
+    # Function responsible for simply returning the current value of the input (useful for conditionals)
+    def currValue(self):
+        if valid:
+            return mcp.read_adc(self.portNum)
 
 #######
 # OUTPUT (PCA9685)
@@ -84,17 +96,23 @@ i2c_bus = busio.I2C(SCL, SDA)
 pca = PCA9685(i2c_bus)
 
 # Frequency associated with the PWM
+# Too high of a frequency causes issues, so we settled for 60, which allows functionality
+# for both LEDs and the motor drivers.
+# Currently trying to determine the most optimal frequency for performance
 pca.frequency = 60
 
 class outputPort:
 
-    # Port Number (on the HAT for Output) and the Channel associated with the port
+    # Port Number (on the HAT for Output) and the PWM Channel associated with the port
     portNum = -1
     channel = -1
 
+    # Validity flag to ensure the correct port is used
     valid = True
 
+    # Constructor for the outputPort
     def __init__(self, portNum):
+        # The only valid ports accepted will be from 0 to 7 (referred to as J9 to J16)
         if (portNum > -1 and portNum < 8):
             self.valid = True
 
@@ -112,17 +130,37 @@ class outputPort:
             self.channel = pca.channels[self.portNum]
 
             print("PWM:", self.portNum)
-
         else:
             self.valid = False
 
-    # testing function to see if the LED attached can turn on and off
-    def OnAndOff(self):
-        for i in range(5000):
-            self.channel.duty_cycle = i
+    # Testing function to see if the LED attached can turn on and off
+    def onAndOff(self):
+        if valid:
+            for i in range(10000):
+                self.channel.duty_cycle = i
 
-        for i in range(5000, 0, -1):
-            self.channel.duty_cycle = i
+            for i in range(10000, 0, -1):
+                self.channel.duty_cycle = i
+
+    # Function associated with turning on or off the LED
+    def ledStatus(self, instruction):
+        if valid:
+            if instruction.lower() == 'on':
+                self.channel.duty_cycle = 0x7fff
+            elif instruction.lower() == 'off':
+                self.channel.duty_cycle = 0
+            else:
+                print('invalid instruction')
+
+    # Function associated with turning on the LED to a specific brightness, using the duty cycle to
+    # gauge the amount of voltage that would be received through the PWM
+    # Accepted values only from 0 to 255, which is then mapped to 0 to ~1023
+    def ledLevel(self, level):
+        if valid:
+            if (level >= 0 && level < 256)
+                self.channel.duty_cycle = level * 256
+            else:
+                print('invalid level')
 
 #######
 # MOTOR OUTPUT (TB6612FNG)
@@ -136,18 +174,24 @@ class outputPort:
 
 class motor:
 
+    # Variables associated with the motor pair number and the channels used for that motor pair
     motorNum = -1
     channel1 = -1
     channel2 = -1
     pwmChannel = -1
 
+    # Validity flag to ensure the correct port is used
     valid = True
 
+    # Constructor for the motor
     def __init__(self, motorNum):
-
+        # Only accepted values for the motor number is 1 and 2 (yes, we should start at 0)
         if (motorNum > 0 and motorNum < 3):
             self.valid = True
 
+            # Brute force mapping of the motor pair and the respective channels
+            # First pair uses PWM 0, 1, and 2
+            # Second pair uses PWM 3, 4, and 5
             if (motorNum == 1):
                 self.channel1 = pca.channels[0]
                 self.channel2 = pca.channels[1]
@@ -160,18 +204,30 @@ class motor:
         else:
             self.valid = False
 
+    # Function for using the motor driver to move
+    # The absolute value of the speed inputted will be mapped to the correct analog value for the PWM to control the motor
+    # If it is positive, it will rotate the motor clockwise
+    # If it is negative, it will rotate the motor counter-clockwise
+    # Accepted values only range from -256 to 256, exclusive
     def motorSpeed(self, speed):
-        if (speed > -256 and speed < 256):
-            self.channel1.duty_cycle = 0
-            self.channel2.duty_cycle = 0xffff
-            self.pwmChannel = speed*256
-        else:
-            print('invalid speed')
+        if valid:
+            if (speed >= 0 and speed < 256):
+                self.channel1.duty_cycle = 0
+                self.channel2.duty_cycle = 0xffff
+                self.pwmChannel = speed*256
+            elif (speed > -256 and speed < 0):
+                self.channel1.duty_cycle = 0xffff
+                self.channel2.duty_cycle = 0
+                self.pwmChannel = speed*256
+            else:
+                print('invalid speed')
 
+    # Function for completely stopping the motor drivers, simply by setting all the channels to 0
     def motorStop(self):
-        self.channel1.duty_cycle = 0
-        self.channel2.duty_cycle = 0
-        self.pwmChannel = 0
+        if valid:
+            self.channel1.duty_cycle = 0
+            self.channel2.duty_cycle = 0
+            self.pwmChannel = 0
 
 '''
 # Will incorporate GPIO back into the library if needed
