@@ -2,6 +2,19 @@
 # Developed by Andrew Hua
 # Credits go to the respective owners of the imported libraries
 
+# These are the libraries that should be installed in order to use this library
+# There MAY be some redundancies in the libraries here
+# sudo pip3 install adafruit-gpio
+# sudo pip3 install adafruit-mcp3008
+# sudo pip3 install board
+# sudo pip3 install adafruit-circuitpython-pca9685
+
+# Additionally, in order for the Pi to work with this library, it must have the following features enabled
+# SSH Enabled
+# SPI Enabled
+# I2C Enabled
+# Newer version of the Raspbian (9 or 10)
+
 #########
 # TIME FUNCTIONS
 #########
@@ -104,10 +117,6 @@ pca.frequency = 60
 
 class outputPort:
 
-    # Port Number (on the HAT for Output) and the PWM Channel associated with the port
-    portNum = -1
-    channel = -1
-
     # Validity flag to ensure the correct port is used
     valid = True
 
@@ -137,17 +146,17 @@ class outputPort:
     # Testing function to see if the LED attached can turn on and off
     def onAndOff(self):
         if self.valid:
-            for i in range(10000):
+            for i in range(0xffff):
                 self.channel.duty_cycle = i
 
-            for i in range(10000, 0, -1):
+            for i in range(0xffff, 0, -1):
                 self.channel.duty_cycle = i
 
     # Function associated with turning on or off the LED
     def ledStatus(self, instruction):
         if self.valid:
             if instruction.lower() == 'on':
-                self.channel.duty_cycle = 0x7fff
+                self.channel.duty_cycle = 0xfff
             elif instruction.lower() == 'off':
                 self.channel.duty_cycle = 0
             else:
@@ -159,7 +168,7 @@ class outputPort:
     def ledLevel(self, level):
         if self.valid:
             if (level >= 0 and level < 256):
-                self.channel.duty_cycle = level * 256
+                self.channel.duty_cycle = level * 16
             else:
                 print('invalid level')
 
@@ -208,7 +217,7 @@ class motor:
                 self.channel1 = pca.channels[0]
                 self.channel2 = pca.channels[1]
                 self.pwmChannel = pca.channels[2]
-            else:
+            elif (motorNum == 2):
                 self.channel1 = pca.channels[3]
                 self.channel2 = pca.channels[4]
                 self.pwmChannel = pca.channels[5]
@@ -223,40 +232,58 @@ class motor:
     # Accepted values only range from -256 to 256, exclusive
     def motorSpeed(self, speed):
         if self.valid:
-            if (speed >= 0 and speed < 256):
+            if (speed >= 0 and speed < 0xffff):
                 self.channel1.duty_cycle = 0
-                self.channel2.duty_cycle = 0xffff
-                self.pwmChannel = speed*256
-            elif (speed > -256 and speed < 0):
-                self.channel1.duty_cycle = 0xffff
+                self.channel2.duty_cycle = 0x7fff
+                self.pwmChannel = speed
+            elif (speed > -0xffff and speed < 0):
+                self.channel1.duty_cycle = 0x7fff
                 self.channel2.duty_cycle = 0
-                self.pwmChannel = speed*256
+                self.pwmChannel = speed
             else:
                 print('invalid speed')
+                self.channel1.duty_cycle = 0
+                self.channel2.duty_cycle = 0
+                self.pwmChannel = 0
 
     # Function for completely stopping the motor drivers, simply by setting all the channels to 0
     def motorStop(self):
         if self.valid:
             self.pwmChannel = 0
+            self.channel1.duty_cycle = 0
+            self.channel2.duty_cycle = 0
 
     def clear(self):
         if self.valid:
             self.channel1.duty_cycle = 0
             self.channel2.duty_cycle = 0
             self.pwmChannel = 0
+            pca.reset()
 
+
+
+#######
+# ULTRASONIC SENSOR INPUT/OUTPUT
+#######
+
+# Math module imported to use ceiling / floor functions for proper quantification of analog values from the sensor
 import math
 
 class ultrasonicSensor:
 
+    # Validity flag to ensure proper port setup
     valid = True
 
+    # Port assignment for the TRIGGER and ECHO (Output and Input respectively)
+    # Channel will be assoicated with corresponding PWM channel
     trigPort = -1
     echoPort = -1
     channel = -1
 
+    # Constructor for the ultrasonic sensor class, accepting values for the input and output ports
     def __init__(self, trigPort, echoPort):
 
+        # The object will only be valid if the ports selected are between 0 and 7 for both input and output
         if (trigPort >= 0 and trigPort <= 7 and echoPort >= 0 and echoPort <= 7):
             self.valid = True
 
@@ -279,17 +306,17 @@ class ultrasonicSensor:
     def detect(self):
         self.channel.duty_cycle = 0
         delayMicro(2)
-        self.channel.duty_cycle = 0xffff
+        self.channel.duty_cycle = 0xfff
         delayMicro(10)
         self.channel.duty_cycle = 0
 
         startTime = 0
         endTime = 0
 
-        while mcp.read_adc(self.echoPort) == 0xffff:
+        while mcp.read_adc(self.echoPort) == 0xfff:
             startTime = time.time()
 
-        while not mcp.read_adc(self.echoPort) == 0xffff:
+        while not mcp.read_adc(self.echoPort) == 0xfff:
             endTime = time.time()
 
         duration = endtime - startTime
@@ -298,3 +325,39 @@ class ultrasonicSensor:
 
         return distance
 
+'''
+Referencing Script for Resolving Motor Issues
+I have no idea why ONLY this can control it
+#############
+from board import SCL, SDA
+
+from adafruit_pca9685 import PCA9685
+
+import busio
+
+import time
+
+i2c_bus = busio.I2C(SCL, SDA)
+
+pca = PCA9685(i2c_bus)
+
+pca.frequency = 60
+
+channel1 = pca.channels[0]
+channel2 = pca.channels[1]
+pwm = pca.channels[2]
+
+channel3 = pca.channels[3]
+channel4 = pca.channels[4]
+pwm2 = pca.channels[5]
+
+channel1.duty_cycle = 0x7fff
+channel2.duty_cycle = 0
+pwm.duty_cycle = 5000
+time.sleep(0.5)
+
+channel3.duty_cycle = 0x7fff
+channel4.duty_cycle = 0
+pwm2.duty_cycle = 2000
+
+'''
