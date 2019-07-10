@@ -15,7 +15,8 @@
 # I2C Enabled
 # Newer version of the Raspbian (9 or 10)
 
-# Put import libraries on top
+# Math module imported to use ceiling / floor functions for proper quantification of analog values from the sensor
+import math
 
 #########
 # TIME FUNCTIONS
@@ -53,8 +54,7 @@ SPI_PORT = 0
 SPI_DEVICE = 0
 mcp = MCP.MCP3008(spi=SPI.SpiDev(SPI_PORT, SPI_DEVICE))
 
-# Considering having individual input classes for different types of modules
-# Input class for all general peripheral input devices - limited functions
+# Parent input class for all general peripheral input devices - limited functions
 class inputPort:
 
     # Validity flag to ensure that correct port is used
@@ -84,6 +84,7 @@ class inputPort:
             return mcp.read_adc(self.portNum)
 
 # Input class for exclusively the button
+# Inherits the inputPort
 class button(inputPort):
 
     # Constructor for the inputPort
@@ -109,6 +110,8 @@ class button(inputPort):
                 # Does nothing until the button has been pressed (may incorporate a delay)
                 self.valid = self.valid
 
+# Input class for exclusively the potentiometer
+# Inherits the inputPort
 class potentiometer(inputPort):
 
     def __init__(self, portNum):
@@ -143,7 +146,7 @@ pca = PCA9685(i2c_bus)
 # Currently trying to determine the most optimal frequency for performance
 pca.frequency = 60
 
-# Output class for almost all general peripheral output devices - limited functions
+# Parent output class for almost all general peripheral output devices - limited functions
 class outputPort:
 
     # Validity flag to ensure the correct port is used
@@ -179,7 +182,7 @@ class outputPort:
             if pwm >= 0:
                 self.channel.duty_cycle = pwm
             else:
-                print ('Invalid PWM.')
+                print('Invalid PWM.')
 
     # Function intended to clear the duty-cycle being sent through
     def clear(self):
@@ -187,6 +190,7 @@ class outputPort:
             self.channel.duty_cycle = 0
 
 # Output class for exclusively the LED
+# Inherits the outputPort
 class led(outputPort):
 
     # Constructor for the led
@@ -224,20 +228,25 @@ class led(outputPort):
                 print('Invalid level.')
 
 # Output class for exclusively the servo device
+# Inherits the outputPort
 class servo(outputPort):
 
     # Constructor for the servo
     def __init__(self, portNum):
         outputPort.__init__(self, portNum)
 
+    # Function responsible for rotating the servo to a specific angle (a range of 0 to 180 degrees)
     def rotateTo(self, angle):
-        # 0 approx 2250 in duty-cycle
-        # 180 approx 10250 in duty-cycle
+        # The approximations at the moment are difficult to control smoothly, will investigate better mapping
+        # 0 degrees  approximately 2250 in duty-cycle
+        # 180 degrees approximately 10250 in duty-cycle
         if self.valid:
+            # The range is about 10,000, and the range for the angular movement is approximately 180
+            # Hence, 10,000 / 180 = approximately 55.555...
             self.channel.duty_cycle = math.ceil(angle * 55.5) + 2250
 
 #######
-# MOTOR OUTPUT (TB6612FNG)
+# MOTOR OUTPUT (PCA9685 & TB6612FNG)
 #######
 
 # Motor class is responsible for another section of the PWM output, but in this case, the signals
@@ -283,7 +292,7 @@ class motor:
             self.valid = False
 
     # Function for using the motor driver to move
-    # The absolute value of the speed inputted will be mapped to the correct analog value for the PWM to control the motor
+    # The absolute value of the speed inputted will map to the correct analog value for the PWM to control the motor
     # If it is positive, it will rotate the motor clockwise
     # If it is negative, it will rotate the motor counter-clockwise
     # Accepted values only range from -256 to 256, exclusive
@@ -315,27 +324,14 @@ class motor:
 # ULTRASONIC SENSOR INPUT/OUTPUT
 #######
 
-# Math module imported to use ceiling / floor functions for proper quantification of analog values from the sensor
-import math
-
 # STILL A WIP
 class ultrasonicSensor:
-
-    # Hardware specifications for the I2C
-    i2c_bus = busio.I2C(SCL, SDA)
-    pca = PCA9685(i2c_bus)
-
-    # Frequency associated with the PWM
-    # Too high of a frequency causes issues, so we settled for 60, which allows functionality
-    # for both LEDs and the motor drivers.
-    # Currently trying to determine the most optimal frequency for performance
-    pca.frequency = 60
 
     # Validity flag to ensure proper port setup
     valid = True
 
     # Port assignment for the TRIGGER and ECHO (Output and Input respectively)
-    # Channel will be assoicated with corresponding PWM channel
+    # Channel will be associated with corresponding PWM channel
     trigPort = -1
     echoPort = -1
     channel = -1
@@ -359,24 +355,25 @@ class ultrasonicSensor:
                             7: 13}
 
             self.trigPort = outputMapping[trigPort]
-            self.channel = self.pca.channels[self.trigPort]
+            self.channel = pca.channels[self.trigPort]
         else:
             self.valid = False
 
+    # Function to read in the ultrasonic sensor values ... but it doesn't work for some reason
     def detect(self):
         self.channel.duty_cycle = 0
         delayMicro(2)
-        self.channel.duty_cycle = 0xfff
+        self.channel.duty_cycle = 0xffff
         delayMicro(10)
         self.channel.duty_cycle = 0
 
         startTime = 0
         endTime = 0
 
-        while mcp.read_adc(self.echoPort) == 0xfff:
+        while not mcp.read_adc(self.echoPort) == 0xffff:
             startTime = time.time()
 
-        while not mcp.read_adc(self.echoPort) == 0xfff:
+        while mcp.read_adc(self.echoPort) == 0xffff:
             endTime = time.time()
 
         duration = endtime - startTime
