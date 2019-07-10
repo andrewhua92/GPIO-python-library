@@ -15,6 +15,8 @@
 # I2C Enabled
 # Newer version of the Raspbian (9 or 10)
 
+# Put import libraries on top
+
 #########
 # TIME FUNCTIONS
 #########
@@ -52,6 +54,7 @@ SPI_DEVICE = 0
 mcp = MCP.MCP3008(spi=SPI.SpiDev(SPI_PORT, SPI_DEVICE))
 
 # Considering having individual input classes for different types of modules
+# Input class for all general peripheral input devices - limited functions
 class inputPort:
 
     # Validity flag to ensure that correct port is used
@@ -59,7 +62,7 @@ class inputPort:
     valid = True
 
     # Initialization of the port number being used
-    portNum = -1;
+    portNum = -1
 
     # Constructor for the inputPort
     def __init__(self, portNum):
@@ -75,6 +78,18 @@ class inputPort:
         if self.valid:
             print('Currently reading in a value of: ', mcp.read_adc(self.portNum))
 
+    # Function responsible for simply returning the current value of the input (useful for conditionals)
+    def currValue(self):
+        if self.valid:
+            return mcp.read_adc(self.portNum)
+
+# Input class for exclusively the button
+class button(inputPort):
+
+    # Constructor for the inputPort
+    def __init__(self, portNum):
+        inputPort.__init__(self, portNum)
+
     # Function responsible for detecting whether a button input has been received
     # Can be used as a conditional statement to gate whether a button input has been received in the code
     def buttonPress(self):
@@ -87,10 +102,21 @@ class inputPort:
                 print('Button has not been pressed')
                 return False
 
-    # Function responsible for simply returning the current value of the input (useful for conditionals)
-    def currValue(self):
+    # Function responsible for halting the code until the specified button has been pressed
+    def untilButtonPress(self):
         if self.valid:
-            return mcp.read_adc(self.portNum)
+            while mcp.read.adc(self.portNum) < 800:
+                # Does nothing until the button has been pressed (may incorporate a delay)
+                self.valid = self.valid
+
+class potentiometer(inputPort):
+
+    def __init__(self, portNum):
+        inputPort.__init__(self, portNum)
+
+    def map(self, key):
+        if self.valid:
+            return math.ceil(mcp.read_adc(self.portNum)/1024 * key)
 
 #######
 # OUTPUT (PCA9685)
@@ -99,7 +125,9 @@ class inputPort:
 # Output is directly involved with the output ports on the SwissCHEESE Hat. The output uses the SCL and SDA ports on
 # the Pi (Serial Clock and Serial Data respectively) to send specific signals through one of the 16 channels on the
 # PCA9685, which then sends the PWM (Pulse Width Modulation) signals to the respective output ports, whether it be
-# actual output ports (J9 to J16) or the motor ports. The interface used is I2C or Intger-Integrated Circuit)
+# actual output ports (J9 to J16) or the motor ports. The interface used is I2C or Inter-Integrated Circuit)
+# Allegedly, the circuit has a 12-bit resolution, but is able to produce up to 16-bit resolution
+# As a result, when setting PWM, your mileage may vary on the degree of success with the devices
 
 from board import SCL, SDA
 from adafruit_pca9685 import PCA9685
@@ -115,6 +143,7 @@ pca = PCA9685(i2c_bus)
 # Currently trying to determine the most optimal frequency for performance
 pca.frequency = 60
 
+# Output class for almost all general peripheral output devices - limited functions
 class outputPort:
 
     # Validity flag to ensure the correct port is used
@@ -139,11 +168,33 @@ class outputPort:
             self.portNum = mapping[portNum]
             self.channel = pca.channels[self.portNum]
 
-            print("PWM:", self.portNum)
+            #print("PWM:", self.portNum)
         else:
             self.valid = False
 
-    # Testing function to see if the LED attached can turn on and off
+    # Function responsible for a brute-force setting of the PWM to the device
+    # Only accepts positive values of PWM by the PCA9685 (0 to 0xffff)
+    def setPWM(self, pwm):
+        if self.valid:
+            if pwm >= 0:
+                self.channel.duty_cycle = pwm
+            else:
+                print ('Invalid PWM.')
+
+    # Function intended to clear the duty-cycle being sent through
+    def clear(self):
+        if self.valid:
+            self.channel.duty_cycle = 0
+
+# Output class for exclusively the LED
+class led(outputPort):
+
+    # Constructor for the led
+    def __init__(self, portNum):
+        outputPort.__init__(self, portNum)
+
+    # Function responsible for slowly brightening and dimming the LED
+    # Takes some time to complete as it goes through 16-bits
     def onAndOff(self):
         if self.valid:
             for i in range(0xffff):
@@ -152,7 +203,7 @@ class outputPort:
             for i in range(0xffff, 0, -1):
                 self.channel.duty_cycle = i
 
-    # Function associated with turning on or off the LED
+    # Function associated with turning on or off the LED based on keywords 'on' and 'off'
     def ledStatus(self, instruction):
         if self.valid:
             if instruction.lower() == 'on':
@@ -160,28 +211,30 @@ class outputPort:
             elif instruction.lower() == 'off':
                 self.channel.duty_cycle = 0
             else:
-                print('invalid instruction')
+                print('Invalid instruction.')
 
     # Function associated with turning on the LED to a specific brightness, using the duty cycle to
     # gauge the amount of voltage that would be received through the PWM
     # Accepted values only from 0 to 255, which is then mapped to 0 to ~1023
     def ledLevel(self, level):
         if self.valid:
-            if (level >= 0 and level < 256):
+            if (level >= 0 and level <= 256):
                 self.channel.duty_cycle = level * 16
             else:
-                print('invalid level')
+                print('Invalid level.')
 
-    def setPWM(self, pwm):
-        if self.valid:
-            if pwm >= 0:
-                self.channel.duty_cycle = pwm
-            else:
-                print ('invalid pwm')
+# Output class for exclusively the servo device
+class servo(outputPort):
 
-    def clear(self):
+    # Constructor for the servo
+    def __init__(self, portNum):
+        outputPort.__init__(self, portNum)
+
+    def rotateTo(self, angle):
+        # 0 approx 2250 in duty-cycle
+        # 180 approx 10250 in duty-cycle
         if self.valid:
-            self.channel.duty_cycle = 0
+            self.channel.duty_cycle = math.ceil(angle * 55.5) + 2250
 
 #######
 # MOTOR OUTPUT (TB6612FNG)
@@ -193,6 +246,7 @@ class outputPort:
 # PWM 0,1 are the Inputs for Motor 1, with PWM 2 being the 'speed' of Motor 1
 # PWM 3,4 are the Inputs for Motor 2, with PWM 5 being the 'speed' of Motor 2
 
+# Motor class responsible for the motor drivers and its movement
 class motor:
 
     # Variables associated with the motor pair number and the channels used for that motor pair
@@ -210,6 +264,8 @@ class motor:
         if (motorNum > 0 and motorNum < 3):
             self.valid = True
 
+            self.motorNum = motorNum
+
             # Brute force mapping of the motor pair and the respective channels
             # First pair uses PWM 0, 1, and 2
             # Second pair uses PWM 3, 4, and 5
@@ -221,6 +277,7 @@ class motor:
                 self.channel1 = pca.channels[3]
                 self.channel2 = pca.channels[4]
                 self.pwmChannel = pca.channels[5]
+            #print('valid motor driver for ', motorNum)
 
         else:
             self.valid = False
@@ -232,35 +289,27 @@ class motor:
     # Accepted values only range from -256 to 256, exclusive
     def motorSpeed(self, speed):
         if self.valid:
-            if (speed >= 0 and speed < 0xffff):
+            if (speed >= 0 and speed < 256):
                 self.channel1.duty_cycle = 0
                 self.channel2.duty_cycle = 0x7fff
-                self.pwmChannel = speed
-            elif (speed > -0xffff and speed < 0):
+                self.pwmChannel.duty_cycle = speed * 125
+            elif (speed > -256 and speed < 0):
                 self.channel1.duty_cycle = 0x7fff
                 self.channel2.duty_cycle = 0
-                self.pwmChannel = speed
+                self.pwmChannel.duty_cycle = speed* -125
             else:
-                print('invalid speed')
+                print('Invalid speed.')
                 self.channel1.duty_cycle = 0
                 self.channel2.duty_cycle = 0
                 self.pwmChannel = 0
 
     # Function for completely stopping the motor drivers, simply by setting all the channels to 0
+    # Acts as a de facto 'clear' function as it halts all of the channels
     def motorStop(self):
         if self.valid:
             self.pwmChannel = 0
             self.channel1.duty_cycle = 0
             self.channel2.duty_cycle = 0
-
-    def clear(self):
-        if self.valid:
-            self.channel1.duty_cycle = 0
-            self.channel2.duty_cycle = 0
-            self.pwmChannel = 0
-            pca.reset()
-
-
 
 #######
 # ULTRASONIC SENSOR INPUT/OUTPUT
@@ -269,7 +318,18 @@ class motor:
 # Math module imported to use ceiling / floor functions for proper quantification of analog values from the sensor
 import math
 
+# STILL A WIP
 class ultrasonicSensor:
+
+    # Hardware specifications for the I2C
+    i2c_bus = busio.I2C(SCL, SDA)
+    pca = PCA9685(i2c_bus)
+
+    # Frequency associated with the PWM
+    # Too high of a frequency causes issues, so we settled for 60, which allows functionality
+    # for both LEDs and the motor drivers.
+    # Currently trying to determine the most optimal frequency for performance
+    pca.frequency = 60
 
     # Validity flag to ensure proper port setup
     valid = True
@@ -299,7 +359,7 @@ class ultrasonicSensor:
                             7: 13}
 
             self.trigPort = outputMapping[trigPort]
-            self.channel = pca.channels[self.trigPort]
+            self.channel = self.pca.channels[self.trigPort]
         else:
             self.valid = False
 
@@ -324,40 +384,3 @@ class ultrasonicSensor:
         distance = duration
 
         return distance
-
-'''
-Referencing Script for Resolving Motor Issues
-I have no idea why ONLY this can control it
-#############
-from board import SCL, SDA
-
-from adafruit_pca9685 import PCA9685
-
-import busio
-
-import time
-
-i2c_bus = busio.I2C(SCL, SDA)
-
-pca = PCA9685(i2c_bus)
-
-pca.frequency = 60
-
-channel1 = pca.channels[0]
-channel2 = pca.channels[1]
-pwm = pca.channels[2]
-
-channel3 = pca.channels[3]
-channel4 = pca.channels[4]
-pwm2 = pca.channels[5]
-
-channel1.duty_cycle = 0x7fff
-channel2.duty_cycle = 0
-pwm.duty_cycle = 5000
-time.sleep(0.5)
-
-channel3.duty_cycle = 0x7fff
-channel4.duty_cycle = 0
-pwm2.duty_cycle = 2000
-
-'''
