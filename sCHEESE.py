@@ -18,10 +18,21 @@
 # Math module imported to use ceiling / floor functions for proper quantification of analog values from the sensor
 import math
 
+# Time module for time functions
+import time
+
+# SPI Modules for the MCP3008 IC
+import Adafruit_GPIO.SPI as SPI
+import Adafruit_MCP3008 as MCP
+
+# I2C Modules for the PCA9685 IC
+from board import SCL, SDA
+from adafruit_pca9685 import PCA9685
+import busio
+
 #########
 # TIME FUNCTIONS
 #########
-import time
 
 # The delay function will mimic the delay function which exists in an Arduino, although it is entirely feasible
 # to also simply use time.sleep() if the user wishes to associate delays in larger units of time (i.e. seconds)
@@ -46,10 +57,7 @@ def delayMicro(microseconds):
 # A7. The output is read through SPI or Serial Peripheral Interface. A lot of the code was inherited from Adafruit's
 # open source repository for the MCP3008 module.
 
-import Adafruit_GPIO.SPI as SPI
-import Adafruit_MCP3008 as MCP
-
-# Hardware SPI configuration
+# Hardware SPI configurations for the Pi
 SPI_PORT = 0
 SPI_DEVICE = 0
 mcp = MCP.MCP3008(spi=SPI.SpiDev(SPI_PORT, SPI_DEVICE))
@@ -87,39 +95,59 @@ class inputPort:
 # Inherits the inputPort
 class button(inputPort):
 
-    # Constructor for the inputPort
+    # Constructor for the button
     def __init__(self, portNum):
-        inputPort.__init__(self, portNum)
+        super().__init__(self, portNum)
 
     # Function responsible for detecting whether a button input has been received
     # Can be used as a conditional statement to gate whether a button input has been received in the code
     def buttonPress(self):
         if self.valid:
             # Unsure about the correct analog value threshold to use as typically input goes above 1000
-            if (mcp.read_adc(self.portNum) > 800):
-                print('Button has been pressed')
+            if mcp.read_adc(self.portNum) > 800:
+                #print('Button has been pressed')
                 return True
             else:
-                print('Button has not been pressed')
+                #print('Button has not been pressed')
                 return False
 
     # Function responsible for halting the code until the specified button has been pressed
     def untilButtonPress(self):
         if self.valid:
             while mcp.read.adc(self.portNum) < 800:
-                # Does nothing until the button has been pressed (may incorporate a delay)
-                self.valid = self.valid
+                # Does nothing until the button has been pressed
+                pass
 
 # Input class for exclusively the potentiometer
 # Inherits the inputPort
 class potentiometer(inputPort):
 
+    # Constructor for the potentiometer
     def __init__(self, portNum):
-        inputPort.__init__(self, portNum)
+        super().__init__(self, portNum)
 
-    def map(self, key):
+    # Function responsible for 'sizing' down the analog range to whatever specified range that the user wishes to have
+    # It takes the current analog values of 0-1023, divides it by 1024, and multiplies it by the range
+    # it has the correct ratio. It is then goes through the ceiling function to turn it from a float to an int
+    def map(self, range):
         if self.valid:
-            return math.ceil(mcp.read_adc(self.portNum)/1024 * key)
+            return math.ceil(mcp.read_adc(self.portNum)/1024 * range)
+
+# Input class for exclusively the IR sensor
+# Inherits the input port
+class irsensor(inputPort):
+
+    # Constructor for the IR sensor
+    def __init__(self, portNum):
+        super().__init__(self, portNum)
+
+# Input class for exclusively the LDR sensor
+# Inherits the input port
+class ldrsensor(inputPort):
+
+    # Constructor for the LDR Sensor
+    def __init__(self, portNum):
+        super().__init__(self, portNum)
 
 #######
 # OUTPUT (PCA9685)
@@ -131,10 +159,6 @@ class potentiometer(inputPort):
 # actual output ports (J9 to J16) or the motor ports. The interface used is I2C or Inter-Integrated Circuit)
 # Allegedly, the circuit has a 12-bit resolution, but is able to produce up to 16-bit resolution
 # As a result, when setting PWM, your mileage may vary on the degree of success with the devices
-
-from board import SCL, SDA
-from adafruit_pca9685 import PCA9685
-import busio
 
 # Hardware specifications for the I2C
 i2c_bus = busio.I2C(SCL, SDA)
@@ -177,6 +201,7 @@ class outputPort:
 
     # Function responsible for a brute-force setting of the PWM to the device
     # Only accepts positive values of PWM by the PCA9685 (0 to 0xffff)
+    # Be warned as not all devices may accept PWM values beyond 12-bits (0-4095)
     def setPWM(self, pwm):
         if self.valid:
             if pwm >= 0:
@@ -195,7 +220,7 @@ class led(outputPort):
 
     # Constructor for the led
     def __init__(self, portNum):
-        outputPort.__init__(self, portNum)
+        super().__init__(self, portNum)
 
     # Function responsible for slowly brightening and dimming the LED
     # Takes some time to complete as it goes through 16-bits
@@ -227,13 +252,30 @@ class led(outputPort):
             else:
                 print('Invalid level.')
 
+    # Function to simply blink the LED an inputted number of times for a specified duration to be on during the blink
+    # Number of blinks cannot be less than 0 and the duration cannot be in negative time
+    def blink(self, blinks, duration):
+        if self.valid:
+            if (blinks >= 0 and duration > 0):
+                for i in range(blinks):
+                    self.channel.duty_cycle = 0
+                    delay(10)
+
+                    self.channel.duty_cycle = 0xffff
+
+                    delay(duration)
+
+                    self.channel.duty_cycle = 0
+            else:
+                print('Invalid number of blinks or duration.')
+
 # Output class for exclusively the servo device
 # Inherits the outputPort
 class servo(outputPort):
 
     # Constructor for the servo
     def __init__(self, portNum):
-        outputPort.__init__(self, portNum)
+        super().__init__(self, portNum)
 
     # Function responsible for rotating the servo to a specific angle (a range of 0 to 180 degrees)
     def rotateTo(self, angle):
@@ -243,7 +285,21 @@ class servo(outputPort):
         if self.valid:
             # The range is about 10,000, and the range for the angular movement is approximately 180
             # Hence, 10,000 / 180 = approximately 55.555...
+            # Currently it is very hacky, and I'd like to make the movement more smooth
             self.channel.duty_cycle = math.ceil(angle * 55.5) + 2250
+
+# Output class for exclusively the buzzer device
+# Inherits the outputPort
+class buzzer(outputPort):
+
+    def __init__(self, portNum):
+        super().__init__(self, portNum)
+
+    # Takes in a specific musical note (A - G) and 'buzzes' the corresponding note
+    def playKey(self, note):
+        # A, Ab, A#, B, Bb, B#, C, Cb, C#, D, Db, D#, E, Eb, E#, F, Fb, F#, G, Gb, G#
+        return
+
 
 #######
 # MOTOR OUTPUT (PCA9685 & TB6612FNG)
@@ -254,6 +310,11 @@ class servo(outputPort):
 # on the strength of the signal it receives (or the duration of the duty cycle since it is a PWM)
 # PWM 0,1 are the Inputs for Motor 1, with PWM 2 being the 'speed' of Motor 1
 # PWM 3,4 are the Inputs for Motor 2, with PWM 5 being the 'speed' of Motor 2
+
+# The motor driver accepts the first two PWM signals as high or low inputs (PWM 0,1,3,4)
+# These signals indicate which direction the motor will move (one of the two will be high and vice versa)
+
+# The third PWM signal is responsible for the exact speed it receives based on the duty-cycle
 
 # Motor class responsible for the motor drivers and its movement
 class motor:
@@ -305,18 +366,18 @@ class motor:
             elif (speed > -256 and speed < 0):
                 self.channel1.duty_cycle = 0x7fff
                 self.channel2.duty_cycle = 0
-                self.pwmChannel.duty_cycle = speed* -125
+                self.pwmChannel.duty_cycle = speed * -125
             else:
                 print('Invalid speed.')
                 self.channel1.duty_cycle = 0
                 self.channel2.duty_cycle = 0
-                self.pwmChannel = 0
+                self.pwmChannel.duty_cycle = 0
 
     # Function for completely stopping the motor drivers, simply by setting all the channels to 0
     # Acts as a de facto 'clear' function as it halts all of the channels
     def motorStop(self):
         if self.valid:
-            self.pwmChannel = 0
+            self.pwmChannel.duty_cycle = 0
             self.channel1.duty_cycle = 0
             self.channel2.duty_cycle = 0
 
