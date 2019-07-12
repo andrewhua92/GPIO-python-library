@@ -15,6 +15,12 @@
 # I2C Enabled
 # Newer version of the Raspbian (9 or 10)
 
+# TO-DO:
+# - Implement Error and Exception Handling
+# - Fix Ultra Sonic Sensing
+# - Implement proper Getters & Setters for different variables
+# - Implement unique functions for certain modules
+
 # Math module imported to use ceiling / floor functions for proper quantification of analog values from the sensor
 import math
 
@@ -72,6 +78,9 @@ class inputPort:
     # Initialization of the port number being used
     portNum = -1
 
+    # Maximum value of the analog values (actually is 1023, but intended purpose is for function use)
+    analogMax = 1024
+
     # Constructor for the inputPort
     def __init__(self, portNum):
             # The only valid ports accepted will be from 0 to 7 (referred to as J1 to J8)
@@ -91,13 +100,30 @@ class inputPort:
         if self.valid:
             return mcp.read_adc(self.portNum)
 
+    # Function for returning current analog value to a smaller scaled number (power of 2) to reduce 'noise' variation
+    # in the value of the input
+    # Magnitude refers to how much it is divided by and what it should round to (uses floor function)
+    # Recursively iterates through the different magnitudes of 2
+    # ONLY accepts values that are powers of 2, up to 1024
+    def currValueRounded(self, magnitude):
+        if self.valid:
+            if magnitude == 1:
+                self.analogMax = 1024
+                return self.currValue()
+            elif magnitude == self.analogMax:
+                return math.floor(self.currValue() / self.analogMax)
+            else:
+                self.analogMax = self.analogMax / 2
+                return self.currValueRounded(magnitude)
+
+
 # Input class for exclusively the button
 # Inherits the inputPort
 class button(inputPort):
 
     # Constructor for the button
     def __init__(self, portNum):
-        super().__init__(self, portNum)
+        super().__init__(portNum)
 
     # Function responsible for detecting whether a button input has been received
     # Can be used as a conditional statement to gate whether a button input has been received in the code
@@ -124,14 +150,14 @@ class potentiometer(inputPort):
 
     # Constructor for the potentiometer
     def __init__(self, portNum):
-        super().__init__(self, portNum)
+        super().__init__(portNum)
 
     # Function responsible for 'sizing' down the analog range to whatever specified range that the user wishes to have
     # It takes the current analog values of 0-1023, divides it by 1024, and multiplies it by the range
     # it has the correct ratio. It is then goes through the ceiling function to turn it from a float to an int
     def map(self, range):
         if self.valid:
-            return math.ceil(mcp.read_adc(self.portNum)/1024 * range)
+            return math.ceil((mcp.read_adc(self.portNum)* range)/1024)
 
 # Input class for exclusively the IR sensor
 # Inherits the input port
@@ -139,7 +165,7 @@ class irsensor(inputPort):
 
     # Constructor for the IR sensor
     def __init__(self, portNum):
-        super().__init__(self, portNum)
+        super().__init__(portNum)
 
 # Input class for exclusively the LDR sensor
 # Inherits the input port
@@ -147,7 +173,7 @@ class ldrsensor(inputPort):
 
     # Constructor for the LDR Sensor
     def __init__(self, portNum):
-        super().__init__(self, portNum)
+        super().__init__(portNum)
 
 #######
 # OUTPUT (PCA9685)
@@ -175,6 +201,15 @@ class outputPort:
 
     # Validity flag to ensure the correct port is used
     valid = True
+
+    # Value for the current PWM duty-cycle that is active on the port
+    # Used for tracking and tracing primarily
+    pwm = 0
+
+    # Output max for 12-bit resolution and 16-bit resolution (both are one greater than actual max)
+    # The 'max' allegedly is 12 bits, however, it is still possible to output a max of 16-bits
+    softMax = 4096
+    hardMax = 65535
 
     # Constructor for the outputPort
     def __init__(self, portNum):
@@ -205,14 +240,44 @@ class outputPort:
     def setPWM(self, pwm):
         if self.valid:
             if pwm >= 0:
+                self.pwm = pwm
                 self.channel.duty_cycle = pwm
             else:
                 print('Invalid PWM.')
 
+    # Function responsible to return the value of the current duty-cycle active on the port
+    def currPWM(self):
+        return self.pwm
+
     # Function intended to clear the duty-cycle being sent through
     def clear(self):
         if self.valid:
+            self.pwm = 0
             self.channel.duty_cycle = 0
+
+# Function responsible for clearing all PWM channels
+def fullClear():
+    for i in range(16):
+        pca.channels[i].duty_cycle = 0
+
+# Function responsible for returning the current value of the duty-cycle of a PWM channel
+# Only valid for integers 0 to 15 inclusive
+def currentDuty(channel):
+    if channel >= 0 and channel <= 15:
+        return pca.channels[channel].duty_cycle
+
+def changeDuty(channel, dc):
+    if (channel >= 0 and channel <= 15) and (dc >= 0 and dc <= 0xffff):
+        pca.channels[channel].duty_cycle = dc
+
+def currentFrequency():
+
+# Function responsible for mutating the frequency (Hz) of the PCA9685
+# May affect ability for it to communicate with some modules
+# Valid integers of 40 and 1600 inclusive
+def changeFrequency(frequency):
+    if frequency >= 40 and frequency <= 1600:
+        pca.frequency = frequency
 
 # Output class for exclusively the LED
 # Inherits the outputPort
@@ -220,24 +285,28 @@ class led(outputPort):
 
     # Constructor for the led
     def __init__(self, portNum):
-        super().__init__(self, portNum)
+        super().__init__(portNum)
 
     # Function responsible for slowly brightening and dimming the LED
     # Takes some time to complete as it goes through 16-bits
     def onAndOff(self):
         if self.valid:
             for i in range(0xffff):
+                self.pwm = i
                 self.channel.duty_cycle = i
 
             for i in range(0xffff, 0, -1):
+                self.pwm = i
                 self.channel.duty_cycle = i
 
     # Function associated with turning on or off the LED based on keywords 'on' and 'off'
     def ledStatus(self, instruction):
         if self.valid:
             if instruction.lower() == 'on':
+                self.pwm = 0xffff
                 self.channel.duty_cycle = 0xfff
             elif instruction.lower() == 'off':
+                self.pwm = 0
                 self.channel.duty_cycle = 0
             else:
                 print('Invalid instruction.')
@@ -248,7 +317,8 @@ class led(outputPort):
     def ledLevel(self, level):
         if self.valid:
             if (level >= 0 and level <= 256):
-                self.channel.duty_cycle = level * 16
+                self.pwm = level * 64
+                self.channel.duty_cycle = level * 64
             else:
                 print('Invalid level.')
 
@@ -258,13 +328,16 @@ class led(outputPort):
         if self.valid:
             if (blinks >= 0 and duration > 0):
                 for i in range(blinks):
+                    self.pwm = 0
                     self.channel.duty_cycle = 0
                     delay(10)
 
+                    self.pwm = 0xffff
                     self.channel.duty_cycle = 0xffff
 
                     delay(duration)
 
+                    self.pwm = 0
                     self.channel.duty_cycle = 0
             else:
                 print('Invalid number of blinks or duration.')
@@ -275,31 +348,31 @@ class servo(outputPort):
 
     # Constructor for the servo
     def __init__(self, portNum):
-        super().__init__(self, portNum)
+        super().__init__(portNum)
 
     # Function responsible for rotating the servo to a specific angle (a range of 0 to 180 degrees)
     def rotateTo(self, angle):
         # The approximations at the moment are difficult to control smoothly, will investigate better mapping
-        # 0 degrees  approximately 2250 in duty-cycle
-        # 180 degrees approximately 10250 in duty-cycle
+        # 0 degrees  approximately 2200 in duty-cycle
+        # 180 degrees approximately 10300 in duty-cycle
         if self.valid:
-            # The range is about 10,000, and the range for the angular movement is approximately 180
-            # Hence, 10,000 / 180 = approximately 55.555...
+            # The range is about 8,100, and the range for the angular movement is approximately 180
+            # Hence, 8,100 / 180 = 45
             # Currently it is very hacky, and I'd like to make the movement more smooth
-            self.channel.duty_cycle = math.ceil(angle * 55.5) + 2250
+            self.pwm = math.ceil(angle * 45) + 2200
+            self.channel.duty_cycle = self.pwm
 
 # Output class for exclusively the buzzer device
 # Inherits the outputPort
 class buzzer(outputPort):
 
     def __init__(self, portNum):
-        super().__init__(self, portNum)
+        super().__init__(portNum)
 
     # Takes in a specific musical note (A - G) and 'buzzes' the corresponding note
     def playKey(self, note):
         # A, Ab, A#, B, Bb, B#, C, Cb, C#, D, Db, D#, E, Eb, E#, F, Fb, F#, G, Gb, G#
         return
-
 
 #######
 # MOTOR OUTPUT (PCA9685 & TB6612FNG)
@@ -397,11 +470,13 @@ class ultrasonicSensor:
     echoPort = -1
     channel = -1
 
+    speedOfSound = 342.6    # metres/second
+
     # Constructor for the ultrasonic sensor class, accepting values for the input and output ports
     def __init__(self, trigPort, echoPort):
 
         # The object will only be valid if the ports selected are between 0 and 7 for both input and output
-        if (trigPort >= 0 and trigPort <= 7 and echoPort >= 0 and echoPort <= 7):
+        if trigPort >= 0 and trigPort <= 7 and echoPort >= 0 and echoPort <= 7:
             self.valid = True
 
             self.echoPort = echoPort
@@ -437,7 +512,7 @@ class ultrasonicSensor:
         while mcp.read_adc(self.echoPort) == 0xffff:
             endTime = time.time()
 
-        duration = endtime - startTime
+        duration = endTime - startTime
 
         distance = duration
 
