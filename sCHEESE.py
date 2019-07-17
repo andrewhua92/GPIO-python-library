@@ -20,6 +20,8 @@
 # - Fix Ultra Sonic Sensing
 # - Implement proper Getters & Setters for different variables
 # - Implement unique functions for certain modules
+# - Implement a setup.py or something to handle the installation of the libraries / dependencies
+# - Implement possible method overloading?
 
 # Math module imported to use ceiling / floor functions for proper quantification of analog values from the sensor
 import math
@@ -116,6 +118,9 @@ class inputPort:
                 self.analogMax = self.analogMax / 2
                 return self.currValueRounded(magnitude)
 
+    # Function responsible for returning the current port of the referenced inputPort object
+    def currPort(self):
+        return self.portNum
 
 # Input class for exclusively the button
 # Inherits the inputPort
@@ -230,7 +235,7 @@ class outputPort:
             self.portNum = mapping[portNum]
             self.channel = pca.channels[self.portNum]
 
-            #print("PWM:", self.portNum)
+            # print("PWM:", self.portNum)
         else:
             self.valid = False
 
@@ -249,6 +254,10 @@ class outputPort:
     def currPWM(self):
         return self.pwm
 
+    # Function responsible to return the current port of the referenced outputPort object
+    def currPort(self):
+        return self.portNum
+
     # Function intended to clear the duty-cycle being sent through
     def clear(self):
         if self.valid:
@@ -266,11 +275,14 @@ def currentDuty(channel):
     if channel >= 0 and channel <= 15:
         return pca.channels[channel].duty_cycle
 
+# Function responsible for mutating an individual channel for the PWM
 def changeDuty(channel, dc):
     if (channel >= 0 and channel <= 15) and (dc >= 0 and dc <= 0xffff):
         pca.channels[channel].duty_cycle = dc
 
+# Function responsible for returning the current value of the frequency of the PCA
 def currentFrequency():
+    return pca.frequency
 
 # Function responsible for mutating the frequency (Hz) of the PCA9685
 # May affect ability for it to communicate with some modules
@@ -370,6 +382,7 @@ class buzzer(outputPort):
         super().__init__(portNum)
 
     # Takes in a specific musical note (A - G) and 'buzzes' the corresponding note
+    # WIP
     def playKey(self, note):
         # A, Ab, A#, B, Bb, B#, C, Cb, C#, D, Db, D#, E, Eb, E#, F, Fb, F#, G, Gb, G#
         return
@@ -430,6 +443,8 @@ class motor:
     # If it is positive, it will rotate the motor clockwise
     # If it is negative, it will rotate the motor counter-clockwise
     # Accepted values only range from -256 to 256, exclusive
+    # The duty-cycle accepts 0 to about 0x7fff, as the speed of the motor becomes almost dangerous as we approach
+    # full 16-bit resolution of 0xffff
     def motorSpeed(self, speed):
         if self.valid:
             if (speed >= 0 and speed < 256):
@@ -453,6 +468,45 @@ class motor:
             self.pwmChannel.duty_cycle = 0
             self.channel1.duty_cycle = 0
             self.channel2.duty_cycle = 0
+
+# CONVENIENT MOTOR FUNCTIONS
+# NEED TO BE TESTED
+
+
+def motorsForward(motor1, motor2, speed):
+    if (motor1.valid and motor2.valid) and (speed >= 0 and speed < 256):
+        motor1.motorSpeed(speed)
+        motor2.motorSpeed(speed)
+    else:
+        return
+
+def motorsBackward(motor1, motor2, speed):
+    if (motor1.valid and motor2.valid) and (speed >= 0 and speed < 256):
+        motor1.motorSpeed(-speed)
+        motor2.motorSpeed(-speed)
+    else:
+        return
+
+def motorsLeft(motor1, motor2, speed1, speed2):
+    if (motor1.valid and motor2.valid) and ((speed1 and speed2) >= 256 and (speed1 and speed2) < 256):
+        motor1.motorSpeed(speed1)
+        motor2.motorSpeed(-speed2)
+    else:
+        return
+
+def motorsRight(motor1, motor2, speed1, speed2):
+    if (motor1.valid and motor2.valid) and ((speed1 and speed2) >= 256 and (speed1 and speed2) < 256):
+        motor1.motorSpeed(-speed1)
+        motor2.motorSpeed(speed2)
+    else:
+        return
+
+def motorsStop(motor1, motor2):
+    if motor1.valid and motor2.valid:
+        motor1.motorStop()
+        motor2.motorStop()
+    else:
+        return
 
 #######
 # ULTRASONIC SENSOR INPUT/OUTPUT
@@ -496,6 +550,7 @@ class ultrasonicSensor:
             self.valid = False
 
     # Function to read in the ultrasonic sensor values ... but it doesn't work for some reason
+    # What is the ideal duty cycle? What signal am I supposed to be receiving?
     def detect(self):
         self.channel.duty_cycle = 0
         delayMicro(2)
