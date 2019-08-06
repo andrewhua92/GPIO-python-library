@@ -22,6 +22,7 @@
 # - Implement unique functions for certain modules
 # - Implement a setup.py or something to handle the installation of the libraries / dependencies
 # - Implement possible method overloading?
+# - Figure out how to program the EEPROM
 
 # Math module imported to use ceiling / floor functions for proper quantification of analog values from the sensor
 import math
@@ -56,6 +57,8 @@ def delayMicro(microseconds):
     time.sleep(microseconds/1000000)
     #print('time delay of {0} microsecond(s)'.format(microseconds/1000000))
 
+# There may be plans to include digital input to complement the analog input
+
 #######
 # INPUT (MCP3008)
 #######
@@ -73,10 +76,6 @@ mcp = MCP.MCP3008(spi=SPI.SpiDev(SPI_PORT, SPI_DEVICE))
 # Parent input class for all general peripheral input devices - limited functions
 class inputPort:
 
-    # Validity flag to ensure that correct port is used
-    # Considering instantly destructing this object is valid flag is not passed
-    valid = True
-
     # Initialization of the port number being used
     portNum = -1
 
@@ -88,19 +87,16 @@ class inputPort:
             # The only valid ports accepted will be from 0 to 7 (referred to as J1 to J8)
             if (portNum > -1 and portNum < 8) :
                 self.portNum = portNum
-                self.valid = True
             else:
-                self.valid = False
+                raise ValueError("Must pick a valid port number from 0-7!")
 
     # Function to print the active value that is being read by the output IN ANALOG terms
     def printValue(self):
-        if self.valid:
-            print('Currently reading in a value of: ', mcp.read_adc(self.portNum))
+        print('Currently reading in a value of: ', mcp.read_adc(self.portNum))
 
     # Function responsible for simply returning the current value of the input (useful for conditionals)
     def currValue(self):
-        if self.valid:
-            return mcp.read_adc(self.portNum)
+        return mcp.read_adc(self.portNum)
 
     # Function for returning current analog value to a smaller scaled number (power of 2) to reduce 'noise' variation
     # in the value of the input
@@ -108,15 +104,14 @@ class inputPort:
     # Recursively iterates through the different magnitudes of 2
     # ONLY accepts values that are powers of 2, up to 1024
     def currValueRounded(self, magnitude):
-        if self.valid:
-            if magnitude == 1:
-                self.analogMax = 1024
-                return self.currValue()
-            elif magnitude == self.analogMax:
-                return math.floor(self.currValue() / self.analogMax)
-            else:
-                self.analogMax = self.analogMax / 2
-                return self.currValueRounded(magnitude)
+        if magnitude == 1:
+            self.analogMax = 1024
+            return self.currValue()
+        elif magnitude == self.analogMax:
+            return math.floor(self.currValue() / self.analogMax)
+        else:
+            self.analogMax = self.analogMax / 2
+            return self.currValueRounded(magnitude)
 
     # Function responsible for returning the current port of the referenced inputPort object
     def currPort(self):
@@ -133,21 +128,19 @@ class button(inputPort):
     # Function responsible for detecting whether a button input has been received
     # Can be used as a conditional statement to gate whether a button input has been received in the code
     def buttonPress(self):
-        if self.valid:
-            # Unsure about the correct analog value threshold to use as typically input goes above 1000
-            if mcp.read_adc(self.portNum) > 800:
-                #print('Button has been pressed')
-                return True
-            else:
-                #print('Button has not been pressed')
-                return False
+        # Unsure about the correct analog value threshold to use as typically input goes above 1000
+        if mcp.read_adc(self.portNum) > 800:
+            #print('Button has been pressed')
+            return True
+        else:
+            #print('Button has not been pressed')
+            return False
 
     # Function responsible for halting the code until the specified button has been pressed
     def untilButtonPress(self):
-        if self.valid:
-            while mcp.read.adc(self.portNum) < 800:
-                # Does nothing until the button has been pressed
-                pass
+        while mcp.read.adc(self.portNum) < 800:
+            # Does nothing until the button has been pressed
+            pass
 
 # Input class for exclusively the potentiometer
 # Inherits the inputPort
@@ -161,8 +154,7 @@ class potentiometer(inputPort):
     # It takes the current analog values of 0-1023, divides it by 1024, and multiplies it by the range
     # it has the correct ratio. It is then goes through the ceiling function to turn it from a float to an int
     def map(self, range):
-        if self.valid:
-            return math.ceil((mcp.read_adc(self.portNum)* range)/1024)
+        return math.ceil((mcp.read_adc(self.portNum)* range)/1024)
 
 # Input class for exclusively the IR sensor
 # Inherits the input port
@@ -204,9 +196,6 @@ pca.frequency = 60
 # Parent output class for almost all general peripheral output devices - limited functions
 class outputPort:
 
-    # Validity flag to ensure the correct port is used
-    valid = True
-
     # Value for the current PWM duty-cycle that is active on the port
     # Used for tracking and tracing primarily
     pwm = 0
@@ -220,7 +209,6 @@ class outputPort:
     def __init__(self, portNum):
         # The only valid ports accepted will be from 0 to 7 (referred to as J9 to J16)
         if (portNum > -1 and portNum < 8):
-            self.valid = True
 
             # Mapping for the output ports to the correct PWM designation
             mapping = {0: 6,
@@ -237,18 +225,17 @@ class outputPort:
 
             # print("PWM:", self.portNum)
         else:
-            self.valid = False
+            raise ValueError("Must be a valid port from 0-7!")
 
     # Function responsible for a brute-force setting of the PWM to the device
     # Only accepts positive values of PWM by the PCA9685 (0 to 0xffff)
     # Be warned as not all devices may accept PWM values beyond 12-bits (0-4095)
     def setPWM(self, pwm):
-        if self.valid:
-            if pwm >= 0:
-                self.pwm = pwm
-                self.channel.duty_cycle = pwm
-            else:
-                print('Invalid PWM.')
+        if pwm >= 0 and pwm <= 0xffff:
+            self.pwm = pwm
+            self.channel.duty_cycle = pwm
+        else:
+            raise ValueError("PWM duty cycle must be greater than 0 and less than 0xffff!")
 
     # Function responsible to return the value of the current duty-cycle active on the port
     def currPWM(self):
@@ -260,9 +247,8 @@ class outputPort:
 
     # Function intended to clear the duty-cycle being sent through
     def clear(self):
-        if self.valid:
-            self.pwm = 0
-            self.channel.duty_cycle = 0
+        self.pwm = 0
+        self.channel.duty_cycle = 0
 
 # Function responsible for clearing all PWM channels
 def fullClear():
@@ -302,57 +288,53 @@ class led(outputPort):
     # Function responsible for slowly brightening and dimming the LED
     # Takes some time to complete as it goes through 16-bits
     def onAndOff(self):
-        if self.valid:
-            for i in range(0xffff):
-                self.pwm = i
-                self.channel.duty_cycle = i
+        for i in range(0xffff):
+            self.pwm = i
+            self.channel.duty_cycle = i
 
-            for i in range(0xffff, 0, -1):
-                self.pwm = i
-                self.channel.duty_cycle = i
+        for i in range(0xffff, 0, -1):
+            self.pwm = i
+            self.channel.duty_cycle = i
 
     # Function associated with turning on or off the LED based on keywords 'on' and 'off'
     def ledStatus(self, instruction):
-        if self.valid:
-            if instruction.lower() == 'on':
-                self.pwm = 0xffff
-                self.channel.duty_cycle = 0xfff
-            elif instruction.lower() == 'off':
-                self.pwm = 0
-                self.channel.duty_cycle = 0
-            else:
-                print('Invalid instruction.')
+        if instruction.lower() == 'on':
+            self.pwm = 0xffff
+            self.channel.duty_cycle = 0xfff
+        elif instruction.lower() == 'off':
+            self.pwm = 0
+            self.channel.duty_cycle = 0
+        else:
+            raise ValueError("Not a valid instruction!")
 
     # Function associated with turning on the LED to a specific brightness, using the duty cycle to
     # gauge the amount of voltage that would be received through the PWM
     # Accepted values only from 0 to 255, which is then mapped to 0 to ~1023
     def ledLevel(self, level):
-        if self.valid:
-            if (level >= 0 and level <= 256):
-                self.pwm = level * 64
-                self.channel.duty_cycle = level * 64
-            else:
-                print('Invalid level.')
+        if (level >= 0 and level <= 256):
+            self.pwm = level * 64
+            self.channel.duty_cycle = level * 64
+        else:
+            raise ValueError("Not a valid PWM level")
 
     # Function to simply blink the LED an inputted number of times for a specified duration to be on during the blink
     # Number of blinks cannot be less than 0 and the duration cannot be in negative time
     def blink(self, blinks, duration):
-        if self.valid:
-            if (blinks >= 0 and duration > 0):
-                for i in range(blinks):
-                    self.pwm = 0
-                    self.channel.duty_cycle = 0
-                    delay(10)
+        if (blinks >= 0 and duration > 0):
+            for i in range(blinks):
+                self.pwm = 0
+                self.channel.duty_cycle = 0
+                delay(10)
 
-                    self.pwm = 0xffff
-                    self.channel.duty_cycle = 0xffff
+                self.pwm = 0xffff
+                self.channel.duty_cycle = 0xffff
 
-                    delay(duration)
+                delay(duration)
 
-                    self.pwm = 0
-                    self.channel.duty_cycle = 0
-            else:
-                print('Invalid number of blinks or duration.')
+                self.pwm = 0
+                self.channel.duty_cycle = 0
+        else:
+            raise ValueError("Blinks and duration must be greater than 0!")
 
 # Output class for exclusively the servo device
 # Inherits the outputPort
@@ -367,12 +349,14 @@ class servo(outputPort):
         # The approximations at the moment are difficult to control smoothly, will investigate better mapping
         # 0 degrees  approximately 2200 in duty-cycle
         # 180 degrees approximately 10300 in duty-cycle
-        if self.valid:
+        if angle >= 0 and angle <= 180:
             # The range is about 8,100, and the range for the angular movement is approximately 180
             # Hence, 8,100 / 180 = 45
             # Currently it is very hacky, and I'd like to make the movement more smooth
             self.pwm = math.ceil(angle * 45) + 2200
             self.channel.duty_cycle = self.pwm
+        else:
+            raise ValueError("Value of angle must be between 0 and 180 inclusively!")
 
 # Output class for exclusively the buzzer device
 # Inherits the outputPort
@@ -411,14 +395,10 @@ class motor:
     channel2 = -1
     pwmChannel = -1
 
-    # Validity flag to ensure the correct port is used
-    valid = True
-
     # Constructor for the motor
     def __init__(self, motorNum):
         # Only accepted values for the motor number is 1 and 2 (yes, we should start at 0)
         if (motorNum > 0 and motorNum < 3):
-            self.valid = True
 
             self.motorNum = motorNum
 
@@ -436,7 +416,7 @@ class motor:
             #print('valid motor driver for ', motorNum)
 
         else:
-            self.valid = False
+            raise ValueError("Invalid motor number!")
 
     # Function for using the motor driver to move
     # The absolute value of the speed inputted will map to the correct analog value for the PWM to control the motor
@@ -446,73 +426,72 @@ class motor:
     # The duty-cycle accepts 0 to about 0x7fff, as the speed of the motor becomes almost dangerous as we approach
     # full 16-bit resolution of 0xffff
     def motorSpeed(self, speed):
-        if self.valid:
-            if (speed >= 0 and speed < 256):
-                self.channel1.duty_cycle = 0
-                self.channel2.duty_cycle = 0x7fff
-                self.pwmChannel.duty_cycle = speed * 125
-            elif (speed > -256 and speed < 0):
-                self.channel1.duty_cycle = 0x7fff
-                self.channel2.duty_cycle = 0
-                self.pwmChannel.duty_cycle = speed * -125
-            else:
-                print('Invalid speed.')
-                self.channel1.duty_cycle = 0
-                self.channel2.duty_cycle = 0
-                self.pwmChannel.duty_cycle = 0
+        if (speed >= 0 and speed < 256):
+            self.channel1.duty_cycle = 0
+            self.channel2.duty_cycle = 0x7fff
+            self.pwmChannel.duty_cycle = speed * 125
+        elif (speed > -256 and speed < 0):
+            self.channel1.duty_cycle = 0x7fff
+            self.channel2.duty_cycle = 0
+            self.pwmChannel.duty_cycle = speed * -125
+        else:
+            print('Invalid speed.')
+            self.channel1.duty_cycle = 0
+            self.channel2.duty_cycle = 0
+            self.pwmChannel.duty_cycle = 0
 
     # Function for completely stopping the motor drivers, simply by setting all the channels to 0
     # Acts as a de facto 'clear' function as it halts all of the channels
     def motorStop(self):
-        if self.valid:
-            self.pwmChannel.duty_cycle = 0
-            self.channel1.duty_cycle = 0
-            self.channel2.duty_cycle = 0
+        self.pwmChannel.duty_cycle = 0
+        self.channel1.duty_cycle = 0
+        self.channel2.duty_cycle = 0
 
 # CONVENIENT MOTOR FUNCTIONS
 # NEED TO BE TESTED
 
 
 def motorsForward(motor1, motor2, speed):
-    if (motor1.valid and motor2.valid) and (speed >= 0 and speed < 256):
+    if (not(motor1 and motor2) is None) and (speed >= 0 and speed < 256):
         motor1.motorSpeed(speed)
         motor2.motorSpeed(speed)
     else:
-        return
+        raise ValueError("Invalid speeds inputted!")
 
 def motorsBackward(motor1, motor2, speed):
-    if (motor1.valid and motor2.valid) and (speed >= 0 and speed < 256):
+    if (not(motor1 and motor2) is None) and (speed >= 0 and speed < 256):
         motor1.motorSpeed(-speed)
         motor2.motorSpeed(-speed)
     else:
-        return
+        raise ValueError("Invalid speeds inputted!")
 
 def motorsLeft(motor1, motor2, speed1, speed2):
-    if (motor1.valid and motor2.valid) and ((speed1 and speed2) >= 256 and (speed1 and speed2) < 256):
+    if (not(motor1 and motor2) is None) and ((speed1 and speed2) >= 256 and (speed1 and speed2) < 256):
         motor1.motorSpeed(speed1)
         motor2.motorSpeed(-speed2)
     else:
-        return
+        raise ValueError("Invalid speeds inputted!")
 
 def motorsRight(motor1, motor2, speed1, speed2):
-    if (motor1.valid and motor2.valid) and ((speed1 and speed2) >= 256 and (speed1 and speed2) < 256):
+    if (not(motor1 and motor2) is None) and ((speed1 and speed2) >= 256 and (speed1 and speed2) < 256):
         motor1.motorSpeed(-speed1)
         motor2.motorSpeed(speed2)
     else:
-        return
+        raise ValueError("Invalid speeds inputted!")
 
 def motorsStop(motor1, motor2):
-    if motor1.valid and motor2.valid:
+    if (not(motor1 and motor2) is None):
         motor1.motorStop()
         motor2.motorStop()
     else:
-        return
+        raise ValueError("Invalid motors inputted!")
 
 #######
 # ULTRASONIC SENSOR INPUT/OUTPUT
 #######
 
 # STILL A WIP
+# Using PWM for input for ultrasonic sensor is currently unviable and inconsistent - will move onto digital inputs
 class ultrasonicSensor:
 
     # Validity flag to ensure proper port setup
@@ -572,3 +551,4 @@ class ultrasonicSensor:
         distance = duration
 
         return distance
+
