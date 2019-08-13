@@ -53,47 +53,70 @@ import os
 def printInfo():
     basepath = '/proc/device-tree/hat/'
 
-    with os.scandir(basepath) as entries:
-        for entry in entries:
-            if entry.is_file():
-                with open(entry, 'r',) as f:
-                    print(entry.name, ': ', f.read())
-
+    if os.path.exists(basepath):
+        with os.scandir(basepath) as entries:
+            for entry in entries:
+                if entry.is_file():
+                    with open(entry, 'r',) as f:
+                        print(entry.name, ': ', f.read())
+    else:
+        raise FileNotFoundError("The HAT is currently not being read. Try equipping and rebooting!")
 
 def printVendor():
     basepath = '/proc/device-tree/hat/vendor'
 
-    with open (basepath, 'r') as f:
-        print('Vendor: ', f.read())
+    if os.path.exists(basepath):
+        with open (basepath, 'r') as f:
+            print('Vendor: ', f.read())
+    else:
+        raise FileNotFoundError("The HAT is currently not being read. Try equipping and rebooting!")
 
 def printUUID():
     basepath = '/proc/device-tree/hat/uuid'
 
-    with open (basepath, 'r') as f:
-        print('UUID: ', f.read())
+    if os.path.exists(basepath):
+        with open (basepath, 'r') as f:
+            print('UUID: ', f.read())
+    else:
+        raise FileNotFoundError("The HAT is currently not being read. Try equipping and rebooting!")
 
 def printProdVer():
     basepath = '/proc/device-tree/hat/product_ver'
 
-    with open (basepath, 'r') as f:
-        print('Product Version: ', f.read())
+    if os.path.exists(basepath):
+        with open (basepath, 'r') as f:
+            print('Product Version: ', f.read())
+    else:
+        raise FileNotFoundError("The HAT is currently not being read. Try equipping and rebooting!")
 
 def printHatName():
     basepath = '/proc/device-tree/hat/name'
 
-    with open (basepath, 'r') as f:
-        print('Name: ', f.read())
+    if os.path.exists(basepath):
+        with open (basepath, 'r') as f:
+            print('Name: ', f.read())
+    else:
+        raise FileNotFoundError("The HAT is currently not being read. Try equipping and rebooting!")
+
 def printProduct():
     basepath = '/proc/device-tree/hat/product'
 
-    with open (basepath, 'r') as f:
-        print('Product: ', f.read())
+    if os.path.exists(basepath):
+        with open (basepath, 'r') as f:
+            print('Product: ', f.read())
+    else:
+        raise FileNotFoundError("The HAT is currently not being read. Try equipping and rebooting!")
+
 
 def printProductID():
     basepath = '/proc/device-tree/hat/product_id'
 
-    with open (basepath, 'r') as f:
-        print('Product ID: ', f.read())
+    if os.path.exists(basepath):
+        with open (basepath, 'r') as f:
+            print('Product ID: ', f.read())
+    else:
+        raise FileNotFoundError("The HAT is currently not being read. Try equipping and rebooting!")
+
 
 #########
 # TIME FUNCTIONS
