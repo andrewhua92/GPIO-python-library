@@ -39,6 +39,62 @@ from board import SCL, SDA
 from adafruit_pca9685 import PCA9685
 import busio
 
+# File Checking
+import os
+
+########
+# HAT INFORMATION
+########
+
+# Functions to print information associated with the EEPROM
+# EEPROM Setup was made through this tutorial:
+# https://hackaday.io/project/11222-raspberry-pi-zero-breakout/log/42353-setting-up-hat-eeprom
+
+def printInfo():
+    basepath = '/proc/device-tree/hat/'
+
+    with os.scandir(basepath) as entries:
+        for entry in entries:
+            if entry.is_file():
+                with open(entry, 'r',) as f:
+                    print(entry.name, ': ', f.read())
+
+
+def printVendor():
+    basepath = '/proc/device-tree/hat/vendor'
+
+    with open (basepath, 'r') as f:
+        print('Vendor: ', f.read())
+
+def printUUID():
+    basepath = '/proc/device-tree/hat/uuid'
+
+    with open (basepath, 'r') as f:
+        print('UUID: ', f.read())
+
+def printProdVer():
+    basepath = '/proc/device-tree/hat/product_ver'
+
+    with open (basepath, 'r') as f:
+        print('Product Version: ', f.read())
+
+def printHatName():
+    basepath = '/proc/device-tree/hat/name'
+
+    with open (basepath, 'r') as f:
+        print('Name: ', f.read())
+def printProduct():
+    basepath = '/proc/device-tree/hat/product'
+
+    with open (basepath, 'r') as f:
+        print('Product: ', f.read())
+
+def printProductID():
+    basepath = '/proc/device-tree/hat/product_id'
+
+    with open (basepath, 'r') as f:
+        print('Product ID: ', f.read())
+
 #########
 # TIME FUNCTIONS
 #########
