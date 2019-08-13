@@ -14,15 +14,14 @@
 # SPI Enabled
 # I2C Enabled
 # Newer version of the Raspbian (9 or 10)
+# Be sure to update!
 
 # TO-DO:
-# - Implement Error and Exception Handling
 # - Fix Ultra Sonic Sensing
 # - Implement proper Getters & Setters for different variables
 # - Implement unique functions for certain modules
 # - Implement a setup.py or something to handle the installation of the libraries / dependencies
 # - Implement possible method overloading?
-# - Figure out how to program the EEPROM
 
 # Math module imported to use ceiling / floor functions for proper quantification of analog values from the sensor
 import math
@@ -126,15 +125,19 @@ def printProductID():
 # to also simply use time.sleep() if the user wishes to associate delays in larger units of time (i.e. seconds)
 
 def delay(milliseconds):
-    time.sleep(milliseconds / 1000)
-    #print('time delay of  {0} millisecond(s)'.format(milliseconds/1000))
+    if milliseconds > 0:
+        time.sleep(milliseconds / 1000)
+    else:
+        raise ValueError("Time entered must be a positive amount.")
 
 # The delayMicro function will mimic the same function in Arduino, with the purpose of being even shorter
 # amount of time, intended for unique circumstances and hardware
 
 def delayMicro(microseconds):
-    time.sleep(microseconds/1000000)
-    #print('time delay of {0} microsecond(s)'.format(microseconds/1000000))
+    if milliseconds > 0:
+        time.sleep(microseconds/1000000)
+    else:
+        raise ValueError("Time entered must be a positive amount.")
 
 # There may be plans to include digital input to complement the analog input
 
@@ -528,7 +531,6 @@ class motor:
 
 # CONVENIENT MOTOR FUNCTIONS
 # NEED TO BE TESTED
-
 
 def motorsForward(motor1, motor2, speed):
     if (not(motor1 and motor2) is None) and (speed >= 0 and speed < 256):
