@@ -46,9 +46,11 @@ import os
 ########
 
 # Functions to print information associated with the EEPROM
-# EEPROM Setup was made through this tutorial:
+# EEPROM Setup was made through these tutorials:
 # https://hackaday.io/project/11222-raspberry-pi-zero-breakout/log/42353-setting-up-hat-eeprom
+# https://www.madebymikal.com/raspberry-pi-hat-identity-eeproms-a-simple-guide/
 
+# Prints all of the EEPROM info available
 def printInfo():
     basepath = '/proc/device-tree/hat/'
 
@@ -61,6 +63,7 @@ def printInfo():
     else:
         raise FileNotFoundError("The HAT is currently not being read. Try equipping and rebooting!")
 
+# Prints vendor name
 def printVendor():
     basepath = '/proc/device-tree/hat/vendor'
 
@@ -70,6 +73,7 @@ def printVendor():
     else:
         raise FileNotFoundError("The HAT is currently not being read. Try equipping and rebooting!")
 
+# Prints the UUID
 def printUUID():
     basepath = '/proc/device-tree/hat/uuid'
 
@@ -79,6 +83,7 @@ def printUUID():
     else:
         raise FileNotFoundError("The HAT is currently not being read. Try equipping and rebooting!")
 
+# Prints the product version
 def printProdVer():
     basepath = '/proc/device-tree/hat/product_ver'
 
@@ -88,6 +93,7 @@ def printProdVer():
     else:
         raise FileNotFoundError("The HAT is currently not being read. Try equipping and rebooting!")
 
+# Prints the name of the HAT
 def printHatName():
     basepath = '/proc/device-tree/hat/name'
 
@@ -97,6 +103,7 @@ def printHatName():
     else:
         raise FileNotFoundError("The HAT is currently not being read. Try equipping and rebooting!")
 
+# Prints the name of the product
 def printProduct():
     basepath = '/proc/device-tree/hat/product'
 
@@ -106,7 +113,7 @@ def printProduct():
     else:
         raise FileNotFoundError("The HAT is currently not being read. Try equipping and rebooting!")
 
-
+# Prints the ID of the product
 def printProductID():
     basepath = '/proc/device-tree/hat/product_id'
 
@@ -115,7 +122,6 @@ def printProductID():
             print('Product ID: ', f.read())
     else:
         raise FileNotFoundError("The HAT is currently not being read. Try equipping and rebooting!")
-
 
 #########
 # TIME FUNCTIONS
@@ -342,11 +348,15 @@ def fullClear():
 def currentDuty(channel):
     if channel >= 0 and channel <= 15:
         return pca.channels[channel].duty_cycle
+    else:
+        raise ValueError("Not a valid channel. Must be 0-15!")
 
 # Function responsible for mutating an individual channel for the PWM
 def changeDuty(channel, dc):
     if (channel >= 0 and channel <= 15) and (dc >= 0 and dc <= 0xffff):
         pca.channels[channel].duty_cycle = dc
+    else:
+        raise ValueError("Not a valid channel and/or duty cycle! Must be 0-15 and 0-0xffff!")
 
 # Function responsible for returning the current value of the frequency of the PCA
 def currentFrequency():
@@ -358,6 +368,8 @@ def currentFrequency():
 def changeFrequency(frequency):
     if frequency >= 40 and frequency <= 1600:
         pca.frequency = frequency
+    else:
+        raise ValueError("Not a valid value of 40 and 1600")
 
 # Output class for exclusively the LED
 # Inherits the outputPort
@@ -383,9 +395,11 @@ class led(outputPort):
         if instruction.lower() == 'on':
             self.pwm = 0xffff
             self.channel.duty_cycle = 0xfff
+
         elif instruction.lower() == 'off':
             self.pwm = 0
             self.channel.duty_cycle = 0
+
         else:
             raise ValueError("Not a valid instruction!")
 
@@ -406,6 +420,7 @@ class led(outputPort):
             for i in range(blinks):
                 self.pwm = 0
                 self.channel.duty_cycle = 0
+
                 delay(10)
 
                 self.pwm = 0xffff
