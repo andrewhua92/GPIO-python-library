@@ -22,6 +22,7 @@
 # - Implement unique functions for certain modules
 # - Implement a setup.py or something to handle the installation of the libraries / dependencies
 # - Implement possible method overloading?
+# - Unique object creation for the inputs and outputs (although, I'm not sure if this important)
 
 # Math module imported to use ceiling / floor functions for proper quantification of analog values from the sensor
 import math
